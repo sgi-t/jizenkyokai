@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="施設勤務体制管理システム - シフト作成・バリデーション・エラー検出">
+  <title>勤務体制管理システム</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <!-- Header -->
+  <header class="app-header">
+    <div class="app-title"><span>⬡</span> 勤務体制管理システム</div>
+    <div class="header-controls">
+      <nav class="month-nav">
+        <button id="prevMonth" title="前月">◀</button>
+        <span class="current-month" id="currentMonth">令和8年 5月</span>
+        <button id="nextMonth" title="次月">▶</button>
+      </nav>
+      <button class="btn btn-secondary" onclick="if(confirm('前月のシフトを今月にコピーしますか？')) App.copyPreviousMonth()">📄 前月コピー</button>
+      <button class="btn btn-danger" onclick="if(confirm('今月の全シフトを消去しますか？')) App.clearAllShifts()">🗑️ 全消去</button>
+      <div id="calendarTitle" style="font-weight: bold; font-size: 1.1rem; min-width: 120px; text-align: center;"></div>
+      <div class="header-nav">
+        <button class="btn btn-secondary" onclick="window.print()">🖨️ 印刷 (PDF)</button>
+        <button class="btn btn-primary" id="saveBtn">💾 保存</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Error Bar -->
+  <div class="error-bar" id="errorBar">
+    <span class="error-badge ok">✅ 読込中...</span>
+  </div>
+
+  <!-- Main Content -->
+  <main class="main-content">
+    <div class="schedule-wrapper">
+      <table class="schedule-table">
+        <thead id="scheduleHead"></thead>
+        <tbody id="scheduleBody"></tbody>
+      </table>
+    </div>
+  </main>
+
+  <div id="printContainer" class="print-only"></div>
+
+  <!-- Shift Picker Modal -->
+  <div class="shift-picker-overlay" id="pickerOverlay" onclick="if(event.target===this) App.closePicker()">
+    <div class="shift-picker" style="min-width: 340px;">
+      <h3 id="pickerTitle">シフト選択</h3>
+      <p id="pickerWeekInfo" style="font-size:0.78rem;color:var(--text-secondary);margin-bottom:8px;"></p>
+      
+      <div style="display:flex; gap:4px; margin-bottom:12px;">
+        <button id="tabShift0" class="btn btn-primary btn-sm" style="flex:1; padding: 4px;" onclick="App.switchShiftTab(0)">勤務 1</button>
+        <button id="tabShift1" class="btn btn-secondary btn-sm" style="flex:1; padding: 4px;" onclick="App.switchShiftTab(1)">勤務 2</button>
+        <button id="tabShift2" class="btn btn-secondary btn-sm" style="flex:1; padding: 4px;" onclick="App.switchShiftTab(2)">勤務 3</button>
+      </div>
+
+      <div style="margin-bottom: 12px; padding: 12px; background: var(--bg-secondary); border-radius: 8px; border: 1px solid var(--border);">
+        <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+          <div style="flex: 1;">
+            <label style="font-size: 0.7rem; color: var(--text-secondary); display: block; margin-bottom: 4px;">開始</label>
+            <input type="time" id="pickerStart" style="width: 100%; padding: 4px; border-radius: 4px; background: var(--bg-primary); color: white; border: 1px solid var(--border);">
+          </div>
+          <div style="flex: 1;">
+            <label style="font-size: 0.7rem; color: var(--text-secondary); display: block; margin-bottom: 4px;">終了</label>
+            <input type="time" id="pickerEnd" style="width: 100%; padding: 4px; border-radius: 4px; background: var(--bg-primary); color: white; border: 1px solid var(--border);">
+          </div>
+        </div>
+        <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+          <div style="flex: 1;">
+            <label style="font-size: 0.7rem; color: var(--text-secondary); display: block; margin-bottom: 4px;">休憩開始 (任意)</label>
+            <input type="time" id="pickerBreakStart" style="width: 100%; padding: 4px; border-radius: 4px; background: var(--bg-primary); color: white; border: 1px solid var(--border);">
+          </div>
+          <div style="flex: 1;">
+            <label style="font-size: 0.7rem; color: var(--text-secondary); display: block; margin-bottom: 4px;">休憩終了 (任意)</label>
+            <input type="time" id="pickerBreakEnd" style="width: 100%; padding: 4px; border-radius: 4px; background: var(--bg-primary); color: white; border: 1px solid var(--border);">
+          </div>
+        </div>
+        <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+          <div style="flex: 1;">
+            <label style="font-size: 0.7rem; color: var(--text-secondary); display: block; margin-bottom: 4px;">配置先棟</label>
+            <select id="pickerBuilding" style="width: 100%; padding: 4px; border-radius: 4px; background: var(--bg-primary); color: white; border: 1px solid var(--border);">
+              <option value="admin">管理</option>
+              <option value="A">A棟</option>
+              <option value="AB">A棟B棟</option>
+              <option value="B">B棟</option>
+              <option value="C">C棟</option>
+              <option value="D">D棟</option>
+              <option value="psy">心理</option>
+            </select>
+          </div>
+          <div style="flex: 1;">
+            <label style="font-size: 0.7rem; color: var(--text-secondary); display: block; margin-bottom: 4px;">宿泊の計算</label>
+            <select id="pickerOvernightCalc" style="width: 100%; padding: 4px; border-radius: 4px; background: var(--bg-primary); color: white; border: 1px solid var(--border);">
+              <option value="deemed">みなし</option>
+              <option value="actual">実働</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <p style="font-size:0.75rem;color:var(--text-secondary);margin-bottom:6px;">プリセット (クリックで反映):</p>
+      <div class="shift-picker-grid">
+        <button class="shift-picker-btn" data-shift="work" style="color:#81C784;border-color:rgba(129,199,132,0.4)" onclick="App.applyPreset('work')">
+          勤<div class="shift-time">時間入力</div>
+        </button>
+        <button class="shift-picker-btn" data-shift="workOvernight" style="color:#CE93D8;border-color:rgba(206,147,216,0.4)" onclick="App.applyPreset('workOvernight')">
+          泊<div class="shift-time">宿泊あり</div>
+        </button>
+        <button class="shift-picker-btn" data-shift="dayOff" style="color:#90A4AE;border-color:rgba(144,164,174,0.3)" onclick="App.applyPreset('dayOff')">
+          公休<div class="shift-time">公休</div>
+        </button>
+        <button class="shift-picker-btn" data-shift="paidLeave" style="color:#F48FB1;border-color:rgba(244,143,177,0.4)" onclick="App.applyPreset('paidLeave')">
+          有休<div class="shift-time">有休</div>
+        </button>
+        <button class="shift-picker-btn" data-shift="annualLeave" style="color:#EF9A9A;border-color:rgba(239,154,154,0.4)" onclick="App.applyPreset('annualLeave')">
+          年休<div class="shift-time">年休</div>
+        </button>
+        <button class="shift-picker-btn" id="clearShiftBtn" style="color:var(--text-muted);border-color:var(--border)" onclick="App.clearCurrentShiftTab()">
+          ✕<div class="shift-time">クリア</div>
+        </button>
+      </div>
+      <div class="picker-actions">
+        <button class="btn btn-primary btn-sm" onclick="App.saveCustomShift()">決定</button>
+        <button class="btn btn-secondary btn-sm" onclick="App.closePicker()">閉じる</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Staff Settings Modal -->
+  <div class="shift-picker-overlay" id="staffModalOverlay" onclick="if(event.target===this) App.closeStaffModal()">
+    <div class="shift-picker" style="min-width: 380px;">
+      <h3 id="staffModalTitle">スタッフ設定</h3>
+      
+      <div style="margin-bottom: 12px; padding: 12px; background: var(--bg-secondary); border-radius: 8px; border: 1px solid var(--border);">
+        <label style="font-size: 0.8rem; color: var(--text-secondary); display: block; margin-bottom: 4px;">スタッフ名</label>
+        <input type="text" id="staffNameInput" style="width: 100%; padding: 6px; border-radius: 4px; background: var(--bg-primary); color: white; border: 1px solid var(--border); margin-bottom: 12px;">
+        
+        <div style="display:flex; gap:12px; margin-bottom: 12px;">
+          <div style="flex:1;">
+            <label style="font-size: 0.8rem; color: var(--text-secondary); display: block; margin-bottom: 4px;">年間の有給付与日数</label>
+            <input type="number" id="staffLeaveInput" min="0" max="40" style="width: 100%; padding: 6px; border-radius: 4px; background: var(--bg-primary); color: white; border: 1px solid var(--border);">
+          </div>
+          <div style="flex:1;">
+            <label style="font-size: 0.8rem; color: var(--text-secondary); display: block; margin-bottom: 4px;">宿泊の勤務計算</label>
+            <select id="staffOvernightCalc" style="width: 100%; padding: 6px; border-radius: 4px; background: var(--bg-primary); color: white; border: 1px solid var(--border);">
+              <option value="deemed">みなし8時間</option>
+              <option value="actual">実働時間</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div style="margin-bottom: 16px; padding: 12px; background: var(--bg-secondary); border-radius: 8px; border: 1px solid var(--border);">
+        <h4 style="font-size: 0.8rem; margin-bottom: 8px; color: var(--text-primary);">曜日ごとの一括コピー (今月)</h4>
+        
+        <div style="display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; max-height: 200px; overflow-y: auto;">
+          <!-- JS will populate pat_0 to pat_6 -->
+          <div style="display:flex; align-items:center; gap:4px; font-size:0.75rem;">
+            <span style="width:16px;">日</span><select id="pat_0" style="padding:2px;"><option value="">-</option><option value="work">勤</option><option value="workOvernight">泊</option><option value="dayOff">公休</option></select>
+            <input type="time" id="patStart_0" style="width:65px; padding:2px;">~<input type="time" id="patEnd_0" style="width:65px; padding:2px;">
+          </div>
+          <div style="display:flex; align-items:center; gap:4px; font-size:0.75rem;">
+            <span style="width:16px;">月</span><select id="pat_1" style="padding:2px;"><option value="">-</option><option value="work">勤</option><option value="workOvernight">泊</option><option value="dayOff">公休</option></select>
+            <input type="time" id="patStart_1" style="width:65px; padding:2px;">~<input type="time" id="patEnd_1" style="width:65px; padding:2px;">
+          </div>
+          <div style="display:flex; align-items:center; gap:4px; font-size:0.75rem;">
+            <span style="width:16px;">火</span><select id="pat_2" style="padding:2px;"><option value="">-</option><option value="work">勤</option><option value="workOvernight">泊</option><option value="dayOff">公休</option></select>
+            <input type="time" id="patStart_2" style="width:65px; padding:2px;">~<input type="time" id="patEnd_2" style="width:65px; padding:2px;">
+          </div>
+          <div style="display:flex; align-items:center; gap:4px; font-size:0.75rem;">
+            <span style="width:16px;">水</span><select id="pat_3" style="padding:2px;"><option value="">-</option><option value="work">勤</option><option value="workOvernight">泊</option><option value="dayOff">公休</option></select>
+            <input type="time" id="patStart_3" style="width:65px; padding:2px;">~<input type="time" id="patEnd_3" style="width:65px; padding:2px;">
+          </div>
+          <div style="display:flex; align-items:center; gap:4px; font-size:0.75rem;">
+            <span style="width:16px;">木</span><select id="pat_4" style="padding:2px;"><option value="">-</option><option value="work">勤</option><option value="workOvernight">泊</option><option value="dayOff">公休</option></select>
+            <input type="time" id="patStart_4" style="width:65px; padding:2px;">~<input type="time" id="patEnd_4" style="width:65px; padding:2px;">
+          </div>
+          <div style="display:flex; align-items:center; gap:4px; font-size:0.75rem;">
+            <span style="width:16px;">金</span><select id="pat_5" style="padding:2px;"><option value="">-</option><option value="work">勤</option><option value="workOvernight">泊</option><option value="dayOff">公休</option></select>
+            <input type="time" id="patStart_5" style="width:65px; padding:2px;">~<input type="time" id="patEnd_5" style="width:65px; padding:2px;">
+          </div>
+          <div style="display:flex; align-items:center; gap:4px; font-size:0.75rem;">
+            <span style="width:16px;">土</span><select id="pat_6" style="padding:2px;"><option value="">-</option><option value="work">勤</option><option value="workOvernight">泊</option><option value="dayOff">公休</option></select>
+            <input type="time" id="patStart_6" style="width:65px; padding:2px;">~<input type="time" id="patEnd_6" style="width:65px; padding:2px;">
+          </div>
+        </div>
+        <button class="btn btn-primary btn-sm" style="width: 100%; justify-content: center;" onclick="App.applyWeeklyPattern()">このパターンを適用</button>
+      </div>
+
+      <div style="margin-bottom: 16px;">
+        <button class="btn btn-danger btn-sm" style="width: 100%; justify-content: center;" onclick="App.clearStaffShifts()">この担当者のシフトを全消去</button>
+      </div>
+
+      <div class="picker-actions">
+        <button class="btn btn-secondary btn-sm" onclick="App.saveStaffModal()">保存して閉じる</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Error Panel (Side) -->
+  <aside class="error-panel" id="errorPanel">
+    <h3>
+      エラー・警告一覧
+      <button class="btn btn-sm btn-secondary" id="closeErrorPanel">✕</button>
+    </h3>
+    <div id="errorList"></div>
+  </aside>
+
+  <!-- Toast Container -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <!-- Scripts -->
+  <script src="js/shiftTypes.js"></script>
+  <script src="js/data.js"></script>
+  <script src="js/validation.js"></script>
+  <script src="js/storage.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
